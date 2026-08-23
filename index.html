@@ -143,7 +143,11 @@ header.topbar{
   width:34px;height:34px;border-radius:9px;flex-shrink:0;
   background:linear-gradient(135deg,var(--blue),#6aa8ff);
   display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#04101f;
+  overflow:hidden;
 }
+.avatar img{width:100%;height:100%;object-fit:cover;display:block;}
+.photo-picker{display:flex;align-items:center;gap:14px;margin-bottom:18px;}
+.photo-picker .avatar{width:64px;height:64px;border-radius:16px;font-size:22px;}
 /* ---------- CATEGORY MENU (fullscreen) ---------- */
 .catmenu-overlay{
   position:fixed;inset:0;z-index:200;display:flex;
@@ -681,7 +685,7 @@ select.sortsel{background:var(--panel);border:1px solid var(--border);border-rad
 .list-row:last-child{border-bottom:none;}
 .list-row-media{width:46px;height:46px;border-radius:9px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:18px;}
 .msg-thread{display:flex;flex-direction:column;gap:9px;max-height:360px;overflow-y:auto;padding:6px 2px;}
-.msg-bubble{max-width:74%;padding:9px 12px;border-radius:12px;font-size:12.5px;line-height:1.5;white-space:pre-line;}
+.msg-bubble{max-width:74%;padding:9px 12px;border-radius:12px;font-size:12.5px;line-height:1.5;}
 .msg-bubble.me{align-self:flex-end;background:linear-gradient(135deg,var(--orange),#ff9354);color:#170a02;border-bottom-right-radius:3px;}
 .msg-bubble.them{align-self:flex-start;background:var(--elevated);border:1px solid var(--border);border-bottom-left-radius:3px;}
 .msg-time{font-size:9.5px;color:var(--low);margin-top:3px;}
@@ -848,16 +852,6 @@ html,body{touch-action:pan-x pan-y;}
          return isSignedIn() &&
            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
        }
-       function isOwnerOfListing(listingId) {
-         return isSignedIn() &&
-           get(/databases/$(database)/documents/listings/$(listingId)).data.seller.sellerUid == request.auth.uid;
-       }
-       // Bu kullanıcı bu ilanı gerçekten satın almış mı? (bkz. completeOrder — purchases
-       // dokümanı yalnızca ödeme/transaction başarıyla tamamlandığında yazılır.)
-       function hasPurchased(listingId) {
-         return isSignedIn() &&
-           exists(/databases/$(database)/documents/purchases/$(request.auth.uid + '_' + listingId));
-       }
        match /users/{userId} {
          allow read: if isSignedIn();
          allow create: if isSignedIn() && request.auth.uid == userId
@@ -868,33 +862,7 @@ html,body{touch-action:pan-x pan-y;}
        }
        match /listings/{listingId} {
          allow read: if true;
-         allow create: if isSignedIn() && request.resource.data.seller.sellerUid == request.auth.uid;
-         // Satıcı yalnızca "öne çıkan" rozetini ve otomatik teslimat bilgisi olup olmadığını
-         // (hasAutoDelivery — bir bayrak, gerçek şifre değil) değiştirebilir; fiyat/başlık/
-         // açıklama gibi alanları yalnızca admin değiştirebilir (mevcut yönetim paneli akışı).
-         allow update: if isAdmin() || (isOwnerOfListing(listingId) &&
-           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['badges','hasAutoDelivery']));
-         allow delete: if isAdmin() || isOwnerOfListing(listingId);
-
-         // ÖNEMLİ: Gmail/şifre gibi hassas otomatik teslimat bilgileri asla üstteki
-         // /listings/{listingId} dokümanında tutulmaz (o doküman herkese açık ve toplu
-         // sorgulanabilir). Bunun yerine burada, ayrı ve varsayılan olarak KAPALI bir alt
-         // koleksiyonda tutulur; yalnızca tek tek (get) okunabilir, asla listelenemez.
-         match /private/delivery {
-           allow get: if isAdmin() || isOwnerOfListing(listingId) || hasPurchased(listingId);
-           allow list: if false;
-           allow write: if isAdmin() || isOwnerOfListing(listingId);
-         }
-       }
-       match /orders/{orderId} {
-         allow read: if isAdmin() || (isSignedIn() && resource.data.buyerUid == request.auth.uid);
-         allow create: if isSignedIn() && request.resource.data.buyerUid == request.auth.uid;
-         allow update, delete: if isAdmin();
-       }
-       match /purchases/{purchaseId} {
-         allow read: if isAdmin() || (isSignedIn() && resource.data.buyerUid == request.auth.uid);
-         allow create: if isSignedIn() && request.resource.data.buyerUid == request.auth.uid
-           && purchaseId == request.auth.uid + '_' + request.resource.data.listingId;
+         allow create: if isSignedIn();
          allow update, delete: if isAdmin();
        }
        match /banners/{bannerId} {
@@ -922,16 +890,7 @@ html,body{touch-action:pan-x pan-y;}
        }
      }
    }
-
-   ÖNEMLİ SINIR (lütfen oku): Bu kurallar, otomatik teslimat bilgilerinin herkese açık ilan
-   listesiyle birlikte toplu şekilde sızmasını engeller ve bilgiyi yalnızca satıcıya ve
-   gerçekten "purchases" kaydı bulunan alıcıya açar. Ancak "orders"/"purchases" kayıtları ve
-   bakiye düşümü, bu dosyada bir Firestore transaction içinde İSTEMCİ TARAFINDAN yazılıyor
-   (Cloud Function yok). Yani tam uçtan uca sahtecilik koruması (ör. bir kullanıcının kendi
-   tarayıcısından "ödedim" diyerek sahte bir purchases dokümanı üretmesi ihtimali) ancak
-   ödeme/teslimat adımının güvenilir bir sunucu bileşenine (Cloud Function) taşınmasıyla tam
-   olarak kapatılabilir. Gerçek/canlı bir ortamda üretime çıkmadan önce bu adımın bir Cloud
-   Function'a taşınması şiddetle önerilir. ------------- */
+------------------------------------------------------------- */
 const firebaseConfig = {
   apiKey: "AIzaSyBdO02Lwx9femB8IdzmHx6vEA5MTH7f6pc",
   authDomain: "nadas-hizmetleri.firebaseapp.com",
@@ -1057,12 +1016,6 @@ const TYPES = [
 ];
 const typeName = id => (TYPES.find(t=>t.id===id)||{}).name || id;
 
-/* ---------------- ORTAK: SKIN/KOSTÜM SAYISI ARALIKLARI & TESLİMAT SÜRESİ SEÇENEKLERİ ---------------- */
-// Skin/Kostüm sayısı artık serbest metin/sayı değil, sabit aralıklardan seçilir (tüm oyun kategorilerinde ortak).
-const SKIN_COUNT_RANGES = ['15-30','30-60','60-120','120-240','240-480','1000-2000'];
-// İlan teslimat süresi seçenekleri (tüm ilan türlerinde ortak, İlan Ver sihirbazının Teslimat adımında kullanılır).
-const DELIVERY_TIME_OPTIONS = ['3 saat','6 saat','12 saat'];
-
 /* ---------------- PUBG MOBILE — KATEGORİYE ÖZEL PROFESYONEL İLAN ALANLARI ---------------- */
 // Güncel PUBG Mobile rütbe sistemi: Bronz→Taç arası 5 alt kademe (V en düşük, I en yüksek),
 // ardından As, As Ustası, As Hakimi ve sunucu bazlı ilk 500'e özel Fatih.
@@ -1081,9 +1034,12 @@ const PUBG_TYPE_FIELDS = {
     {id:'rank', label:'Rütbe (Güncel Sezon)', kind:'select', options:PUBG_RANKS},
     {id:'level', label:'Seviye (Level)', kind:'number', placeholder:'Örn: 75'},
     {id:'season', label:'Sezon', kind:'text', placeholder:'Örn: S28'},
+    {id:'uc', label:'Hesaptaki UC', kind:'number', placeholder:'0'},
     {id:'server', label:'Sunucu / Bölge', kind:'select', options:PUBG_SERVERS},
     {id:'linkedAccounts', label:'Hesaba Bağlı Platformlar', kind:'multiselect', options:PUBG_LOGIN_METHODS, max:4},
-    {id:'skinCount', label:'Skin / Kostüm Sayısı', kind:'select', options:SKIN_COUNT_RANGES},
+    {id:'skinCount', label:'Skin / Kostüm Sayısı', kind:'number', placeholder:'0'},
+    {id:'mythic', label:'Mythic Kostüm', kind:'select', options:['Hayır','Evet']},
+    {id:'kd', label:'K/D Oranı (opsiyonel)', kind:'text', placeholder:'Örn: 4.2'},
   ],
   bakiye: [
     {id:'ucAmount', label:'UC Miktarı', kind:'select', options:PUBG_UC_PACKAGES.map(String).concat(['Özel Miktar'])},
@@ -1125,7 +1081,7 @@ const VLR_TYPE_FIELDS = {
     {id:'level', label:'Hesap Seviyesi', kind:'number', placeholder:'Örn: 120'},
     {id:'server', label:'Sunucu / Bölge', kind:'select', options:VLR_SERVERS},
     {id:'agentCount', label:'Açık Ajan Sayısı', kind:'number', placeholder:'0'},
-    {id:'skinCount', label:'Silah Skin Sayısı', kind:'select', options:SKIN_COUNT_RANGES},
+    {id:'skinCount', label:'Silah Skin Sayısı', kind:'number', placeholder:'0'},
     {id:'premiumBundle', label:'Premium Skin Paketi (Elderflame/Reaver vb.)', kind:'select', options:['Hayır','Evet']},
     {id:'loginMethod', label:'Giriş Yöntemi', kind:'select', options:VLR_LOGIN_METHODS},
   ],
@@ -1170,7 +1126,7 @@ const LOL_TYPE_FIELDS = {
     {id:'level', label:'Summoner Seviyesi', kind:'number', placeholder:'Örn: 150'},
     {id:'server', label:'Sunucu / Bölge', kind:'select', options:LOL_SERVERS},
     {id:'championCount', label:'Şampiyon Sayısı', kind:'number', placeholder:'0'},
-    {id:'skinCount', label:'Skin Sayısı', kind:'select', options:SKIN_COUNT_RANGES},
+    {id:'skinCount', label:'Skin Sayısı', kind:'number', placeholder:'0'},
     {id:'prestigeSkin', label:'Prestij / Chroma Skin', kind:'select', options:['Hayır','Evet']},
     {id:'honorLevel', label:'Onur Seviyesi (Honor)', kind:'text', placeholder:'Örn: 4'},
   ],
@@ -1215,7 +1171,7 @@ const MLBB_TYPE_FIELDS = {
     {id:'level', label:'Hesap Seviyesi', kind:'number', placeholder:'Örn: 40'},
     {id:'server', label:'Sunucu / Bölge', kind:'select', options:MLBB_SERVERS},
     {id:'heroCount', label:'Kahraman (Hero) Sayısı', kind:'number', placeholder:'0'},
-    {id:'skinCount', label:'Skin Sayısı', kind:'select', options:SKIN_COUNT_RANGES},
+    {id:'skinCount', label:'Skin Sayısı', kind:'number', placeholder:'0'},
     {id:'legendarySkin', label:'Epic / Legendary Skin', kind:'select', options:['Hayır','Evet']},
     {id:'loginMethod', label:'Giriş Yöntemi', kind:'select', options:MLBB_LOGIN_METHODS},
   ],
@@ -1506,6 +1462,8 @@ const state = {
   userName:'',
   userEmail:'',
   shopName:'',
+  photoURL:'',
+  storeQuery:'',
   authLoading:false,
   paymentRequests: FIREBASE_ENABLED ? [] : MOCK_PAYMENT_REQUESTS.slice(),
   globalTransactions: FIREBASE_ENABLED ? [] : MOCK_GLOBAL_TRANSACTIONS.slice(),
@@ -1558,6 +1516,7 @@ function resetPersonalState(){
   state.hasPass = false;
   state.passExpiry = null;
   state.shopName = '';
+  state.photoURL = '';
 }
 
 function fmt(n){ return '₺'+Number(n).toLocaleString('tr-TR'); }
@@ -1583,6 +1542,75 @@ function displayName(){
   return n || 'Kullanıcı';
 }
 
+/* ---------------- TEKİL KULLANICI / MAĞAZA KİMLİĞİ YARDIMCILARI ----------------
+   Bir mağazanın "kimliği" her zaman o kullanıcının Firebase uid'idir (seller.sellerUid).
+   Mağaza adı ve profil fotoğrafı sadece görünen (denormalize edilmiş) alanlardır ve
+   isim/fotoğraf değiştiğinde bu kimliğe bağlı TÜM ilanlarda güncellenir — böylece asla
+   yeni bir mağaza/kullanıcı kaydı oluşmaz ve eski isimle mükerrer profil oluşmaz. */
+function avatarHtml(photoURL, name, extraClass){
+  const cls = 'avatar'+(extraClass?(' '+extraClass):'');
+  if(photoURL) return `<div class="${cls}"><img src="${esc(photoURL)}" alt="${esc(name||'')}" loading="lazy"></div>`;
+  return `<div class="${cls}">${esc(initials(name))}</div>`;
+}
+/* İlanda saklanan mağaza adı her zaman "temiz" (ekstra etiket içermeyen) haldedir;
+   "(Sen)" gibi bağlama özel etiketler yalnızca görüntüleme anında eklenir. */
+function sellerDisplayName(seller){
+  if(!seller) return '';
+  const mine = seller.sellerUid && state.uid && seller.sellerUid===state.uid;
+  return seller.name + (mine ? ' (Sen)' : '');
+}
+function validateImageFile(file){
+  if(!file) return 'Dosya seçilmedi';
+  if(!/^image\//.test(file.type)) return 'Lütfen bir resim dosyası seç';
+  if(file.size > 8*1024*1024) return 'Fotoğraf 8MB\'tan küçük olmalı';
+  return null;
+}
+/* Mağaza adı veya profil fotoğrafı değiştiğinde, aynı kullanıcıya (sellerUid) ait
+   TÜM ilanlardaki gömülü satıcı bilgisini günceller. Yeni bir mağaza/ilan kaydı
+   OLUŞTURMAZ; sadece mevcut kayıtların görünen alanlarını senkronize eder. */
+async function syncSellerInfoAcrossListings(patch){
+  if(!state.uid) return;
+  // Bellekteki (görüntülenen) ilanları hemen güncelle
+  LISTINGS.forEach(l=>{
+    if(l.seller && l.seller.sellerUid===state.uid){ Object.assign(l.seller, patch); }
+  });
+  if(!FIREBASE_ENABLED || !fbDb) return;
+  try{
+    const snap = await fbDb.collection('listings').where('seller.sellerUid','==', state.uid).get();
+    if(snap.empty) return;
+    const batch = fbDb.batch();
+    const fsPatch = {};
+    Object.keys(patch).forEach(k=>{ fsPatch['seller.'+k] = patch[k]; });
+    snap.docs.forEach(d=>batch.update(d.ref, fsPatch));
+    await batch.commit();
+  }catch(err){ console.error('Mağaza bilgisi ilanlara senkronize edilemedi:', err); }
+}
+/* ---------------- PROFİL FOTOĞRAFI SİSTEMİ ----------------
+   Kullanıcı cihazının galerisinden bir fotoğraf seçer, imgbb'ye yüklenir ve dönen
+   URL tekil kullanıcı kimliğine (uid) bağlı kalıcı profil fotoğrafı olarak kaydedilir.
+   Bu fotoğraf kullanıcı profilinde VE mağaza profilinde (tüm ilanlarında) otomatik
+   gösterilir; yeni fotoğraf eskisinin yerini alır. */
+async function handleProfilePhotoSelect(inputEl){
+  const file = inputEl.files && inputEl.files[0];
+  inputEl.value='';
+  const err = validateImageFile(file);
+  if(err){ toast(err,'error'); return; }
+  if(!state.loggedIn){ toast('Fotoğraf yüklemek için giriş yapmalısın','error'); return; }
+  const btn = document.getElementById('profilePhotoBtn');
+  if(btn){ btn.disabled=true; btn.textContent='Yükleniyor...'; }
+  try{
+    const url = await uploadToImgbb(file);
+    if(FIREBASE_ENABLED && state.uid){
+      await fbDb.collection('users').doc(state.uid).update({ photoURL: url });
+    }
+    state.photoURL = url;
+    await syncSellerInfoAcrossListings({ photoURL: url });
+    toast('Profil fotoğrafı güncellendi','success');
+    render();
+  }catch(e){ toast('Fotoğraf yüklenemedi: '+(e.message||''),'error'); }
+  finally{ if(btn){ btn.disabled=false; btn.textContent='📷 Fotoğraf Seç'; } }
+}
+
 /* ---------------- FIREBASE: AUTH & KULLANICI DOKÜMANI ---------------- */
 function watchAuthState(){
   if(!FIREBASE_ENABLED) return;
@@ -1598,6 +1626,7 @@ function watchAuthState(){
           const d = snap.data();
           state.userName = d.name || state.userEmail;
           state.shopName = d.shopName || '';
+          state.photoURL = d.photoURL || '';
           state.balance = typeof d.balance==='number' ? d.balance : 0;
           state.isAdmin = d.role === 'admin';
           state.userPhone = d.phone || '';
@@ -1613,6 +1642,7 @@ function watchAuthState(){
       }catch(err){ console.error('Kullanıcı verisi okunamadı:', err); }
       loadListingsFromFirestore();
       loadAnnouncementsForUser();
+      loadMySalesFromFirestore();
       if(state.isAdmin){ loadPaymentRequestsFromFirestore(); loadGlobalTransactionsFromFirestore(); loadSupportTicketsFromFirestore(); loadAnnouncementsForAdmin(); }
       render();
     }else{
@@ -1629,7 +1659,7 @@ async function registerUser(name, email, password){
     const cred = await fbAuth.createUserWithEmailAndPassword(email, password);
     // Rol HER ZAMAN 'user' olarak yazılır — admin ataması yalnızca Firebase Console/Firestore üzerinden elle yapılabilir.
     await fbDb.collection('users').doc(cred.user.uid).set({
-      name: name || email, email: email, role: 'user', balance: 0, verified: false, hasPass: false, passExpiry: null, shopName: '',
+      name: name || email, email: email, role: 'user', balance: 0, verified: false, hasPass: false, passExpiry: null, shopName: '', photoURL: '',
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
     });
     openShopSetupModal(1);
@@ -1849,6 +1879,12 @@ function go(view, params){
   setTimeout(()=>{ state.loading=false; render(); }, 420);
 }
 function closeModal(){ document.getElementById('modalRoot').innerHTML=''; }
+/* Bir satıcının mağaza profiline gider. Mağaza kimliği daima sellerUid'dir; uid yoksa
+   (ör. eski/yönetici ilanı) isimle geriye dönük eşleştirme yapılır. */
+function goShop(uid, name){
+  if(uid) go('shop',{uid});
+  else go('shop',{name});
+}
 
 /* ---------------- HEADER ---------------- */
 function renderHeader(){
@@ -1882,7 +1918,7 @@ function renderHeader(){
           <button class="icon-btn" onclick="go('messages',{})" aria-label="Mesajlar">${ic('mail',16)}${unreadMsgs?`<span class="badge-dot">${unreadMsgs}</span>`:''}</button>
           <button class="user-info-btn" onclick="toggleAccountPanel()" aria-label="Hesabım">
             <span class="ub-amount">${fmt(state.balance)}</span>
-            <div class="avatar">${initials(displayName())}</div>
+            ${avatarHtml(state.photoURL, displayName())}
           </button>
         </div>
         <div class="user-bar-group">
@@ -1950,6 +1986,12 @@ function renderCatMenu(){
         <input id="catMenuSearchInput" type="text" placeholder="Oyun, epin, ilan ara..." oninput="state.catMenuQuery=this.value;debouncedCatMenuFilter();" value="${esc(state.catMenuQuery||'')}">
       </div>
       <div class="catmenu-list">
+        ${!state.catMenuQuery ? `
+        <button class="catmenu-row" style="--accent:#3B8CFF;" onclick="state.panelsOpen.catMenu=false;go('stores',{})">
+          <span class="catmenu-row-ico" style="background:#3B8CFF;">${ic('store',22)}</span>
+          <span class="catmenu-row-name">Mağaza Ara</span>
+          <span class="catmenu-row-chevron">${ic('chevronRight',18)}</span>
+        </button>` : ''}
         ${CATEGORIES.filter(c=>!state.catMenuQuery || c.name.toLowerCase().includes(state.catMenuQuery.toLowerCase())).map(c=>`
           <button class="catmenu-row" style="--accent:${catColor(c.id)};" onclick="state.panelsOpen.catMenu=false;goCategory('${c.id}')">
             <span class="catmenu-row-ico" style="background:${catColor(c.id)};">${ic(c.icon,22)}</span>
@@ -1992,7 +2034,7 @@ function renderUserMenu(){
   return `
   <div style="position:absolute;right:18px;top:64px;width:220px;background:var(--panel-2);border:1px solid var(--border);border-radius:14px;box-shadow:0 20px 40px -14px rgba(0,0,0,.6);z-index:60;overflow:hidden;">
     <div style="padding:14px;border-bottom:1px solid var(--border-soft);display:flex;gap:10px;align-items:center;">
-      <div class="avatar">${initials(displayName())}</div>
+      ${avatarHtml(state.photoURL, displayName())}
       <div><b style="font-size:13px;">${esc(displayName())}</b><div class="small text-mid">Bakiye: ${fmt(state.balance)}</div></div>
     </div>
     <button class="panel-nav-item" style="width:100%;border-radius:0;padding:11px 14px;" onclick="go('account',{});state.panelsOpen.userMenu=false;">${ic('user',14)} Hesabım</button>
@@ -2043,7 +2085,7 @@ function renderAccountPanel(){
       <div class="ap-body">
         <div class="ap-profile-card">
           <div class="ap-profile-top">
-            <div class="avatar ap-avatar">${initials(displayName())}</div>
+            <div class="avatar ap-avatar">${state.photoURL?`<img src="${esc(state.photoURL)}" alt="">`:esc(initials(displayName()))}</div>
             <div>
               <div class="ap-username">${esc(displayName())}</div>
               <div class="ap-success">${ic('check',11)} ${successCount} BAŞARILI İŞLEM</div>
@@ -2137,7 +2179,7 @@ function renderCard(l, i){
       <div class="card-cat">${catName(l.cat)} ${l.type?`· ${typeName(l.type)}`:''}</div>
       <div class="card-title">${esc(l.title)}</div>
       <div class="card-seller">
-        <span>${esc(l.seller.name)}</span>
+        <span style="cursor:pointer;" onclick="event.stopPropagation();goShop('${l.seller.sellerUid||''}','${esc(l.seller.name).replace(/'/g,"")}')">${esc(sellerDisplayName(l.seller))}</span>
         <span class="stars">★ ${l.seller.rating}</span>
         ${l.seller.verified?'<span class="verified-badge">✓ Güvenilir</span>':''}
         ${l.seller.priority?'<span class="priority-badge">👑 Öncelikli</span>':''}
@@ -2186,7 +2228,7 @@ function homeTabListing(){
 function viewHome(){
   const tickerItems = [...LISTINGS].sort(()=>Math.random()-.5).slice(0,10);
   const tickerHtml = Array.from({length:2}).map(()=> tickerItems.map(l=>`
-      <div class="ticker-item"><span class="pulse-dot" style="animation-duration:2.4s"></span> <b>${esc(l.seller.name)}</b> ilanı: ${esc(l.title.slice(0,26))}${l.title.length>26?'…':''} <span class="t-price">${fmt(l.price)}</span></div>
+      <div class="ticker-item"><span class="pulse-dot" style="animation-duration:2.4s"></span> <b>${esc(sellerDisplayName(l.seller))}</b> ilanı: ${esc(l.title.slice(0,26))}${l.title.length>26?'…':''} <span class="t-price">${fmt(l.price)}</span></div>
   `).join('')).join('');
 
   return `
@@ -2555,17 +2597,15 @@ function viewListing(){
           ${isFeaturedActive(l)?`<span class="pill pill-featured">${ic('checkCircle',11)} Öne Çıkan İlan ✓</span>`:''}
           ${l.oldPrice?`<span class="pill pill-orange">${ic('bolt',11)} Fırsat</span>`:''}
           <span class="pill pill-blue">${catIcon(l.cat)} ${catName(l.cat)}</span>
-          ${l.deliveryMode==='otomatik'?`<span class="pill pill-success">${ic('bolt',11)} Otomatik Teslimat</span>`:''}
-          ${l.deliveryTime?`<span class="pill pill-blue">${ic('clock',11)} ${esc(l.deliveryTime)}</span>`:''}
         </div>
         <div class="detail-title">${esc(l.title)}</div>
         <div>${l.oldPrice?`<span class="price-old" style="font-size:14px;">${fmt(l.oldPrice)}</span>`:''}<span class="detail-price">${fmt(l.price)}</span></div>
         <div class="small text-mid mt-10">Stokta ${l.stock} adet · ${l.favCount} kişi favoriledi</div>
 
-        <div class="seller-card">
-          <div class="avatar">${l.seller.name.slice(0,2).toUpperCase()}</div>
+        <div class="seller-card" style="cursor:pointer;" onclick="goShop('${l.seller.sellerUid||''}','${esc(l.seller.name).replace(/'/g,"")}')">
+          ${avatarHtml(l.seller.photoURL, l.seller.name)}
           <div class="seller-info">
-            <b>${esc(l.seller.name)} ${l.seller.verified?'<span class="verified-badge">✓ Güvenilir Satıcı</span>':''} ${l.seller.priority?'<span class="priority-badge">👑 Öncelikli Üye</span>':''}</b>
+            <b>${esc(sellerDisplayName(l.seller))} ${l.seller.verified?'<span class="verified-badge">✓ Güvenilir Satıcı</span>':''} ${l.seller.priority?'<span class="priority-badge">👑 Öncelikli Üye</span>':''}</b>
             <div>★ ${l.seller.rating} puan · ${l.seller.sales} satış</div>
           </div>
         </div>
@@ -2573,7 +2613,7 @@ function viewListing(){
         <div class="detail-actions">
           <button class="btn btn-outline btn-block" onclick="addToCart('${l.id}')">${ic('cart',14)} Sepete Ekle</button>
           <button class="btn btn-primary btn-block" onclick="buyNow('${l.id}')">${ic('bolt',14)} Hemen Satın Al</button>
-          <button class="btn btn-ghost btn-block" style="border:1px solid var(--border);" onclick="messageSeller('${l.seller.name}','${l.title.replace(/'/g,"")}')">${ic('mail',14)} Satıcıya Mesaj Gönder</button>
+          <button class="btn btn-ghost btn-block" style="border:1px solid var(--border);" onclick="messageSeller('${esc(l.seller.name).replace(/'/g,"")}','${l.title.replace(/'/g,"")}')">${ic('mail',14)} Satıcıya Mesaj Gönder</button>
           <button class="btn btn-ghost btn-block" style="border:1px solid var(--border);color:${fav?'var(--orange)':'var(--mid)'};" onclick="toggleFav('${l.id}');go('listing',{id:'${l.id}'})">${fav?ic('heartFilled',14)+' Favorilerde':ic('heartOutline',14)+' Favorilere Ekle'}</button>
         </div>
 
@@ -2602,6 +2642,90 @@ function switchThumb(el, i){
 function buyNow(id){
   state.cart = [{id,qty:1}];
   go('checkout',{});
+}
+
+/* ---------------- MAĞAZA ARA / MAĞAZA PROFİLİ ----------------
+   Mağazalar LISTINGS içinden benzersiz mağaza kimliğine (seller.sellerUid) göre
+   gruplanır. Bir kullanıcının tüm ilanları aynı uid'i taşıdığı ve mağaza adı/foto
+   değişince syncSellerInfoAcrossListings ile TÜM ilanlarda güncellendiği için, her
+   uid için listede daima TEK ve GÜNCEL bir mağaza kaydı görünür — eski isimle
+   mükerrer kayıt oluşamaz. sellerUid'i olmayan (ör. yönetici) ilanlar isme göre
+   ayrı ayrı gruplanır. */
+function collectStores(){
+  const groups = new Map();
+  LISTINGS.forEach(l=>{
+    const s = l.seller || {};
+    const key = s.sellerUid ? ('uid:'+s.sellerUid) : ('name:'+(s.name||'Bilinmeyen'));
+    if(!groups.has(key)){
+      groups.set(key, { uid: s.sellerUid||null, name: s.name||'Bilinmeyen', photoURL: s.photoURL||'', verified:false, priority:false, ratingSum:0, ratingCount:0, sales:0, listingCount:0 });
+    }
+    const g = groups.get(key);
+    g.name = s.name || g.name; // her zaman güncel (senkronize edilmiş) ad
+    g.photoURL = s.photoURL || g.photoURL;
+    g.verified = g.verified || !!s.verified;
+    g.priority = g.priority || !!s.priority;
+    g.ratingSum += (typeof s.rating==='number'?s.rating:5);
+    g.ratingCount += 1;
+    g.sales += (s.sales||0);
+    g.listingCount += 1;
+  });
+  return Array.from(groups.values()).map(g=>Object.assign(g,{rating:(g.ratingSum/(g.ratingCount||1)).toFixed(1)}));
+}
+function viewStores(){
+  const q = (state.storeQuery||'').trim().toLowerCase();
+  let stores = collectStores();
+  if(q) stores = stores.filter(s=>s.name.toLowerCase().includes(q));
+  stores.sort((a,b)=>b.sales-a.sales);
+  return `
+  <div class="wrap">
+    <div class="disp section-title" style="margin:20px 0 6px;">${ic('store',20)} Mağaza Ara</div>
+    <div class="section-sub" style="margin-bottom:16px;">Platformdaki tüm mağazaları ada göre ara — her mağaza tekil kimliğiyle listelenir.</div>
+    <div class="catmenu-search" style="margin-bottom:18px;max-width:420px;">
+      ${ic('search',18)}
+      <input type="text" placeholder="Mağaza adı ara..." value="${esc(state.storeQuery||'')}" oninput="state.storeQuery=this.value;renderMainOnly();">
+    </div>
+    ${stores.length ? `<div class="grid-cards">${stores.map(s=>`
+      <div class="card" style="cursor:pointer;padding:16px;display:flex;align-items:center;gap:12px;" onclick="goShop('${s.uid||''}','${esc(s.name).replace(/'/g,"")}')">
+        ${avatarHtml(s.photoURL, s.name, 'profile-head-avatar')}
+        <div style="flex:1;min-width:0;">
+          <b style="font-size:13.5px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(s.name)} ${s.verified?'<span class="verified-badge">✓</span>':''} ${s.priority?'<span class="priority-badge">👑</span>':''}</b>
+          <div class="small text-mid">★ ${s.rating} · ${s.listingCount} ilan · ${s.sales} satış</div>
+        </div>
+      </div>`).join('')}</div>` : `<div class="empty-state"><div class="em-icon">${ic('store',30)}</div><b>Mağaza bulunamadı</b></div>`}
+  </div>`;
+}
+function viewShop(){
+  const uid = state.params.uid;
+  const name = state.params.name;
+  const stores = collectStores();
+  const store = uid ? stores.find(s=>s.uid===uid) : stores.find(s=>s.name===name);
+  if(!store){
+    return `<div class="wrap"><div class="empty-state" style="margin-top:40px;"><div class="em-icon">${ic('store',30)}</div><b>Mağaza bulunamadı</b><button class="btn btn-primary mt-10" onclick="go('stores',{})">Mağaza Ara'ya Dön</button></div></div>`;
+  }
+  const listings = LISTINGS.filter(l=> uid ? (l.seller.sellerUid===uid) : (!l.seller.sellerUid && l.seller.name===name));
+  return `
+  <div class="wrap">
+    <div class="breadcrumb"><a href="#" onclick="go('stores',{})">Mağaza Ara</a> / <b>${esc(store.name)}</b></div>
+    <div class="profile-head" style="margin:16px 0 18px;">
+      ${avatarHtml(store.photoURL, store.name, 'profile-head-avatar')}
+      <div>
+        <b style="font-size:17px;">${esc(store.name)} ${store.verified?'<span class="verified-badge">✓ Güvenilir Satıcı</span>':''} ${store.priority?'<span class="priority-badge">👑 Öncelikli Üye</span>':''}</b>
+        <div class="small text-mid">★ ${store.rating} puan</div>
+      </div>
+    </div>
+    <div class="stat-cards">
+      <div class="stat-card"><b class="mono">${store.listingCount}</b><span>Aktif İlan</span></div>
+      <div class="stat-card"><b class="mono">${store.sales}</b><span>Toplam İlan Satışı</span></div>
+      <div class="stat-card"><b class="mono">★ ${store.rating}</b><span>Ortalama Puan</span></div>
+      <div class="stat-card"><b class="mono">${store.verified?'Doğrulandı ✓':'Doğrulanmadı'}</b><span>Güvenilirlik</span></div>
+    </div>
+    <div class="section-title" style="font-size:15px;margin:20px 0 12px;">Mağaza İlanları</div>
+    ${listings.length ? `<div class="grid-cards">${listings.map((l,i)=>renderCard(l,i)).join('')}</div>` : `<div class="empty-state"><div class="em-icon">${ic('clipboard',30)}</div><b>Bu mağazanın aktif ilanı yok</b></div>`}
+  </div>`;
+}
+function renderMainOnly(){
+  const main = document.querySelector('main');
+  if(main) main.innerHTML = currentViewHtml();
 }
 function messageSeller(name, listingTitle){
   let conv = state.conversations.find(c=>c.withName===name);
@@ -2692,7 +2816,6 @@ function wizStepContent(w){
     </div>`;
   }
   if(w.step===6){
-    const mode = d.deliveryMode || 'manuel';
     return `<h2>Teslimat Bilgileri</h2><p class="hint">Alıcıya nasıl teslim edeceğini belirt.</p>
     <div class="field"><label>Teslimat Yöntemi</label>
       <select id="f_delivery">
@@ -2701,30 +2824,7 @@ function wizStepContent(w){
         <option ${d.delivery==='Kargo (Fiziksel Ürün)'?'selected':''}>Kargo (Fiziksel Ürün)</option>
       </select>
     </div>
-    <div class="field"><label>İlan Teslimat Süresi</label>
-      <select id="f_deliverytime">
-        <option value="" ${!d.deliveryTime?'selected':''}>Seçiniz</option>
-        ${DELIVERY_TIME_OPTIONS.map(o=>`<option ${d.deliveryTime===o?'selected':''}>${o}</option>`).join('')}
-      </select>
-    </div>
-    <div class="divider"></div>
-    <div class="field"><label>Teslimat Sistemi</label>
-      <div class="cat-pick-grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));">
-        <div class="cat-pick ${mode==='otomatik'?'selected':''}" onclick="wizSetDeliveryMode('otomatik')">${ic('bolt',16)} Otomatik Teslimat</div>
-        <div class="cat-pick ${mode==='manuel'?'selected':''}" onclick="wizSetDeliveryMode('manuel')">${ic('mail',16)} Manuel Teslimat</div>
-      </div>
-      <p class="small text-mid" style="margin-top:8px;">${mode==='otomatik'
-        ? 'Ödeme tamamlanır tamamlanmaz hesap bilgileri müşteriye otomatik gösterilir ve Mesajlar bölümüne otomatik iletilir.'
-        : 'Teslimatı satın alma sonrası Mesajlar bölümünden alıcıyla birebir konuşarak sen yaparsın.'}</p>
-    </div>
-    ${mode==='otomatik' ? `
-    <div class="wiz-card" style="background:var(--elevated);padding:14px;">
-      <p class="small text-mid" style="margin-bottom:10px;">Hesap bilgilerini şimdi girebilir ya da ilan yayınlandıktan sonra "İlanlarım" bölümünden ekleyebilirsin. Bu bilgiler yalnızca satın alan müşteriye gösterilir.</p>
-      <div class="field-row">
-        <div class="field"><label>Gmail</label><input id="f_autoEmail" type="email" autocomplete="off" placeholder="ornek@gmail.com" value="${esc(d.autoEmail||'')}"></div>
-        <div class="field"><label>Şifre</label><input id="f_autoPassword" type="text" autocomplete="off" placeholder="Hesap şifresi" value="${esc(d.autoPassword||'')}"></div>
-      </div>
-    </div>` : ''}`;
+    <div class="field"><label>Tahmini Teslimat Süresi</label><input id="f_deliverytime" placeholder="Örn: 15 dakika içinde" value="${esc(d.deliveryTime||'')}"></div>`;
   }
   if(w.step===7){
     const specs = buildListingSpecs(d);
@@ -2737,7 +2837,7 @@ function wizStepContent(w){
       <div class="specs-preview" style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;">
         ${specs.map(([k,v])=>`<div class="small text-mid">${esc(k)}</div><div class="small" style="text-align:right;">${esc(String(v))}</div>`).join('')}
       </div>
-      <div class="small text-mid mt-10">Teslimat: ${esc(d.delivery||'-')} · ${esc(d.deliveryTime||'-')} · ${d.deliveryMode==='otomatik'?'Otomatik Teslimat':'Manuel Teslimat'}</div>
+      <div class="small text-mid mt-10">Teslimat: ${esc(d.delivery||'-')} · ${esc(d.deliveryTime||'-')}</div>
       <div class="small text-mid">Stok: ${d.stock||1} · Görsel: ${(d.images||[]).length}</div>
     </div>
     <div class="wiz-card" style="background:var(--elevated);padding:14px;margin-top:14px;">
@@ -2778,7 +2878,6 @@ function wizStepContent(w){
 function wizSetCat(id){ state.wizard.data.cat=id; delete state.wizard.data.type; delete state.wizard.data.fields; render(); }
 function wizSetType(id){ state.wizard.data.type=id; state.wizard.data.fields=state.wizard.data.fields||{}; render(); }
 function wizSetFeatured(id){ state.wizard.data.featuredPkg=id; render(); }
-function wizSetDeliveryMode(mode){ state.wizard.data.deliveryMode=mode; render(); }
 async function wizHandleImageFiles(fileList){
   const files = Array.from(fileList||[]);
   if(!files.length) return;
@@ -2821,15 +2920,7 @@ function collectWizStep(){
   }
   if(state.wizard.step===3){ if(g('f_desc')) d.desc=g('f_desc').value; }
   if(state.wizard.step===4){ if(g('f_price')) d.price=Number(g('f_price').value)||0; if(g('f_oldprice')) d.oldPrice=Number(g('f_oldprice').value)||0; }
-  if(state.wizard.step===6){
-    if(g('f_delivery')) d.delivery=g('f_delivery').value;
-    if(g('f_deliverytime')) d.deliveryTime=g('f_deliverytime').value;
-    d.deliveryMode = d.deliveryMode || 'manuel';
-    if(d.deliveryMode==='otomatik'){
-      if(g('f_autoEmail')) d.autoEmail=g('f_autoEmail').value.trim();
-      if(g('f_autoPassword')) d.autoPassword=g('f_autoPassword').value;
-    }
-  }
+  if(state.wizard.step===6){ if(g('f_delivery')) d.delivery=g('f_delivery').value; if(g('f_deliverytime')) d.deliveryTime=g('f_deliverytime').value; }
 }
 function wizNext(){
   collectWizStep();
@@ -2858,40 +2949,23 @@ async function publishListing(){
   if(btn){ btn.disabled=true; btn.textContent='Yayınlanıyor...'; }
   const badges = pkg.price>0 ? ['new','hot'] : ['new'];
   const base = { cat:d.cat||'other', title:d.title||'Yeni İlan', price:d.price||0, oldPrice:d.oldPrice||undefined,
-    seller:{name:displayName()+' (Sen)', sellerUid: state.uid||undefined, rating:5.0, sales:0, verified:!!state.verified, priority:isPassActive()}, badges,
+    seller:{name:displayName(), sellerUid: state.uid||undefined, photoURL: state.photoURL||'', rating:5.0, sales:0, verified:!!state.verified, priority:isPassActive()}, badges,
     type:d.type||undefined, specs:buildListingSpecs(d), images:(d.images&&d.images.length)?d.images:3,
     stock:d.stock||1,
     featuredUntil: pkg.price>0 ? (Date.now()+pkg.days*24*60*60*1000) : undefined };
   if(d.desc) base.desc = d.desc;
   if(d.delivery) base.delivery = d.delivery;
   if(d.deliveryTime) base.deliveryTime = d.deliveryTime;
-  base.deliveryMode = d.deliveryMode || 'manuel';
-  // ÖNEMLİ (güvenlik): Gmail/Şifre gibi hassas teslimat bilgileri asla ana "listings"
-  // dokümanına yazılmaz — bu doküman marketplace akışında herkese açık, toplu bir
-  // sorguyla (collection.get()) çekiliyor, yani içine konan her alan tüm ziyaretçilere
-  // gider. Bunun yerine ayrı bir alt koleksiyona (listings/{id}/private/delivery)
-  // yazılır; bu doküman tek tek (get) okunur ve Firestore Security Rules ile yalnızca
-  // satıcıya ve o ilanı gerçekten satın almış alıcıya açılabilir (bkz. firestore.rules).
-  let pendingAutoDelivery = null;
-  if(base.deliveryMode==='otomatik' && d.autoEmail && d.autoPassword){
-    base.hasAutoDelivery = true;
-    pendingAutoDelivery = { email: d.autoEmail, password: d.autoPassword };
-  }
   let id;
   try{
     if(FIREBASE_ENABLED){
       const fsData = Object.assign({}, base, {specs: specsToFirestore(base.specs)});
       const ref = await fbDb.collection('listings').add(fsData);
       id = ref.id;
-      if(pendingAutoDelivery){
-        await fbDb.collection('listings').doc(id).collection('private').doc('delivery')
-          .set({ email: pendingAutoDelivery.email, password: pendingAutoDelivery.password, sellerUid: state.uid||null, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
-      }
     }else{
       id = 'L'+(2000+LISTINGS.length);
     }
   }catch(err){ toast('İlan yayınlanamadı: '+authErrorMessage(err),'error'); if(btn){ btn.disabled=false; btn.textContent='Yayınla'; } return; }
-  if(pendingAutoDelivery) base.autoDelivery = pendingAutoDelivery; // yerel/demo modda ve bu oturumda anında kullanılabilmesi için istemci hafızasında tutulur
   const newListing = makeListing(Object.assign({id}, base));
   LISTINGS.unshift(newListing);
   state.myListings.unshift(id);
@@ -2929,7 +3003,7 @@ function viewCart(){
                 <div class="cart-media" style="${mediaBg(c.l,i)}">${listingImages(c.l)?'':catIcon(c.l.cat,24)}</div>
                 <div class="cart-item-info">
                   <b>${esc(c.l.title)}</b>
-                  <span>${esc(c.l.seller.name)} ${c.l.seller.verified?'· ✓ Güvenilir':''} ${c.l.seller.priority?'· 👑 Öncelikli':''}</span>
+                  <span>${esc(sellerDisplayName(c.l.seller))} ${c.l.seller.verified?'· ✓ Güvenilir':''} ${c.l.seller.priority?'· 👑 Öncelikli':''}</span>
                   <div style="display:flex;align-items:center;gap:10px;margin-top:6px;">
                     <div style="display:flex;align-items:center;gap:8px;background:var(--elevated);border:1px solid var(--border);border-radius:8px;padding:2px 8px;">
                       <button class="btn btn-ghost btn-sm" onclick="changeQty('${c.id}',-1)">−</button>
@@ -2981,17 +3055,7 @@ function viewCheckout(){
           <h2 style="margin-top:10px;">Siparişin Alındı!</h2>
           <p class="hint">Sipariş numaran: <b class="mono" style="color:var(--orange);">${lastOrderId}</b></p>
           <div class="divider"></div>
-          ${lastAutoDeliveries.length ? `
-          <div style="text-align:left;">
-            <p class="small text-mid" style="margin-bottom:10px;">${ic('bolt',13)} Otomatik teslimat tamamlandı. Hesap bilgilerin aşağıda ve "Mesajlar" bölümünde:</p>
-            ${lastAutoDeliveries.map(dl=>`
-              <div class="bank-info-card" style="margin-bottom:10px;">
-                <div class="bank-info-row"><span>İlan</span><b>${esc(dl.title)}</b></div>
-                <div class="bank-info-row"><span>Gmail</span><b class="mono">${esc(dl.email)}</b><button type="button" class="btn btn-ghost btn-sm" onclick="copyText('${esc(dl.email)}', this)">Kopyala</button></div>
-                <div class="bank-info-row"><span>Şifre</span><b class="mono">${esc(dl.password)}</b><button type="button" class="btn btn-ghost btn-sm" onclick="copyText('${esc(dl.password)}', this)">Kopyala</button></div>
-              </div>`).join('')}
-            <p class="small text-mid">Bu bilgiler yalnızca sana gösterilir. Güvenliğin için hesaba giriş yaptıktan sonra şifreyi değiştirmeni öneririz.</p>
-          </div>` : `<p class="small text-mid">Satıcı en kısa sürede teslimat bilgilerini "Mesajlar" bölümünden seninle paylaşacak. Sipariş durumunu "Siparişlerim" sekmesinden takip edebilirsin.</p>`}
+          <p class="small text-mid">Satıcı en kısa sürede teslimat bilgilerini "Mesajlar" bölümünden seninle paylaşacak. Sipariş durumunu "Siparişlerim" sekmesinden takip edebilirsin.</p>
           <div style="display:flex;gap:10px;margin-top:18px;justify-content:center;flex-wrap:wrap;">
             <button class="btn btn-outline" onclick="go('account',{tab:'siparisler'})">Siparişlerimi Gör</button>
             <button class="btn btn-primary" onclick="go('market',{})">Alışverişe Devam Et</button>
@@ -3035,95 +3099,81 @@ function viewCheckout(){
     </div>
   </div>`;
 }
-let lastAutoDeliveries = [];
-/* Otomatik Teslimat ilanı için satın alma sonrası: hesap bilgilerini müşterinin siparişine
-   ekler (yalnızca bu siparişi/satın almayı yapan müşteri görür) ve mağaza/satıcı adına
-   sistem tarafından otomatik oluşturulan bir teslimat mesajını Mesajlar bölümüne düşürür.
-   creds parametresi zaten elde edilmiş {email,password} nesnesidir. */
-function autoDeliverListing(l, creds){
-  if(!l || !creds || !creds.email || !creds.password) return null;
-  const sellerName = (l.seller && l.seller.name) || 'Satıcı';
-  const deliveryText = `Merhaba! "${l.title}" için otomatik teslimat bilgilerin hazır.\nGmail: ${creds.email}\nŞifre: ${creds.password}\n\nHesabına giriş yaptıktan sonra bilgileri kimseyle paylaşma ve şifreni değiştirmeni öneririz.`;
-  let conv = state.conversations.find(c=>c.withName===sellerName && c.listing===l.title);
-  if(!conv){
-    conv = {id:'c'+Date.now()+Math.floor(Math.random()*999), withName:sellerName, listing:l.title, messages:[]};
-    state.conversations.unshift(conv);
-  }
-  conv.messages.push({from:'them', text:deliveryText, time:'Şimdi', auto:true});
-  return { title:l.title, email:creds.email, password:creds.password };
-}
-/* Bir ilanın otomatik teslimat bilgilerini getirir. Canlı (Firebase) modda bu bilgi ana ilan
-   dokümanında DEĞİL, ayrı bir alt koleksiyondadır (listings/{id}/private/delivery) ve Firestore
-   Security Rules bu dokümanı yalnızca satıcıya ve o ilan için gerçekten sipariş kaydı bulunan
-   alıcıya açar (bkz. firestore.rules). Bu yüzden önce sipariş oluşturulur, ardından bilgiler
-   tek tek (get) çekilir — toplu ilan listesi sorgusunda asla yer almaz. */
-async function fetchAutoDeliveryCreds(l){
-  if(!l || l.deliveryMode!=='otomatik') return null;
-  if(!FIREBASE_ENABLED) return l.autoDelivery || null;
-  if(!l.hasAutoDelivery) return null;
-  try{
-    const snap = await fbDb.collection('listings').doc(l.id).collection('private').doc('delivery').get();
-    if(!snap.exists) return null;
-    const data = snap.data();
-    return { email: data.email, password: data.password };
-  }catch(err){ console.error('Teslimat bilgileri okunamadı:', err); return null; }
-}
 async function completeOrder(total){
   const items = state.cart.map(c=>({...c, l:findListing(c.id)})).filter(c=>c.l);
   if(!items.length) return;
-  const btn = document.querySelector('.summary-box .btn-primary');
-  if(btn){ btn.disabled=true; btn.textContent='İşleniyor...'; }
+  state.balance -= total;
   lastOrderId = 'SIP-'+(2300+Math.floor(Math.random()*699));
-  lastAutoDeliveries = [];
-  try{
-    if(FIREBASE_ENABLED && state.uid){
-      // Bakiye düşümü ve sipariş kaydı tek bir Firestore transaction'ında yapılır; bu sayede
-      // "orders" dokümanı gerçekten yeterli bakiyeyle ödeme yapılmışsa oluşur ve teslimat
-      // bilgilerine erişim kuralları bu kayda güvenle dayanabilir.
-      await fbDb.runTransaction(async (tx)=>{
-        const userRef = fbDb.collection('users').doc(state.uid);
-        const userSnap = await tx.get(userRef);
-        const currentBalance = (userSnap.exists && userSnap.data().balance) || 0;
-        if(currentBalance < total) throw new Error('Yetersiz bakiye.');
-        tx.update(userRef, { balance: firebase.firestore.FieldValue.increment(-total) });
-        const orderRef = fbDb.collection('orders').doc(lastOrderId);
-        tx.set(orderRef, {
-          buyerUid: state.uid,
-          listingIds: items.map(c=>c.l.id),
-          item: items.map(c=>c.l.title).join(', ').slice(0,60),
-          price: total,
-          status: 'Ödeme Alındı / Hazırlanıyor',
+  state.orders.unshift({id:lastOrderId, item: items.map(c=>c.l.title).join(', ').slice(0,60), price: total, date:'Bugün', status:'Ödeme Alındı / Hazırlanıyor'});
+  state.balanceHistory.unshift({id:Date.now(), type:'Satın Alma', amount:-total, date:'Bugün', status:'Tamamlandı'});
+  state.notifications.unshift({id:Date.now(), text:`Siparişin oluşturuldu: ${lastOrderId}`, time:'Şimdi', read:false});
+  state.cart = [];
+  toast('Ödeme başarılı! Siparişin oluşturuldu.','success');
+  go('checkout',{done:true});
+  // İptal edilmemiş / başarısız olmayan, GERÇEKTEN tamamlanmış her satın alma için
+  // otomatik mağaza/satış istatistiği güncellemesi. Sipariş iptal olursa veya
+  // tamamlanmazsa bu kod hiç çalışmaz, dolayısıyla satış sayısı artırılmaz.
+  recordSalesForOrder(items, lastOrderId).catch(err=>console.error('Satış istatistiği kaydedilemedi:', err));
+}
+/* Her başarılı satın alma TEK bir satış olarak işlenir (aynı sipariş tekrar
+   sayılmaz — bu fonksiyon completeOrder içinden yalnızca bir kez çağrılır).
+   Satış sayısı doğrudan bu gerçek satın alma kayıtlarından hesaplanır; kullanıcı
+   bu sayıyı elle değiştiremez. */
+async function recordSalesForOrder(items, orderId){
+  for(const c of items){
+    const l = c.l;
+    const sellerUid = l.seller && l.seller.sellerUid;
+    // Bellekteki ilanı hemen güncelle ki arayüzde satış sayısı anında yansısın
+    if(l.seller) l.seller.sales = (l.seller.sales||0) + c.qty;
+    if(!FIREBASE_ENABLED || !fbDb) continue;
+    try{
+      // 1) Önce satın alma kanıtını yaz (purchases/{uid}_{listingId}). Firestore
+      //    güvenlik kuralları, aşağıdaki "seller.sales" artışına ve "sales" kaydına
+      //    yalnızca bu kanıt mevcutsa izin verir — böylece satın almadan hiç kimse
+      //    kendi başına satış sayısını artıramaz. set(...,{merge:true}) kullanılır
+      //    ki aynı ürünü ikinci kez alırken de (doküman zaten varken) hatasız çalışsın.
+      if(state.uid){
+        const purchaseId = state.uid + '_' + l.id;
+        await fbDb.collection('purchases').doc(purchaseId).set({
+          buyerUid: state.uid, listingId: l.id, sellerUid: sellerUid||null, orderId,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        }, {merge:true});
+      }
+      // 2) İlanın satış sayacını artır — satın alma kanıtı sayesinde kurallara uygun
+      if(String(l.id).length && !String(l.id).startsWith('L')){
+        await fbDb.collection('listings').doc(l.id).update({
+          'seller.sales': firebase.firestore.FieldValue.increment(c.qty)
+        });
+      }
+      // 3) Kalıcı, geriye dönük değiştirilemeyen satış kaydı — istatistiklerin asıl kaynağı
+      if(sellerUid){
+        await fbDb.collection('sales').add({
+          orderId, listingId: l.id, listingTitle: l.title, sellerUid,
+          sellerName: l.seller.name||'', buyerUid: state.uid||null, buyerName: displayName(),
+          qty: c.qty, price: l.price*c.qty,
           createdAt: firebase.firestore.FieldValue.serverTimestamp(),
         });
-        // Her satın alınan ilan için ayrıca deterministik ID'li bir "purchases" dokümanı
-        // oluşturulur (purchases/{buyerUid}_{listingId}). Otomatik teslimat bilgilerini
-        // tutan alt koleksiyonun okuma kuralı, bu dokümanın var olup olmadığını (exists())
-        // kontrol ederek "bu kullanıcı bu ilanı gerçekten satın aldı mı" sorusunu cevaplar.
-        items.forEach(c=>{
-          const purchaseRef = fbDb.collection('purchases').doc(state.uid+'_'+c.l.id);
-          tx.set(purchaseRef, { buyerUid: state.uid, listingId: c.l.id, orderId: lastOrderId, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
-        });
-      });
-    }
-    state.balance -= total;
-    for(const c of items){
-      if(c.l.deliveryMode==='otomatik'){
-        const creds = await fetchAutoDeliveryCreds(c.l);
-        const delivered = autoDeliverListing(c.l, creds);
-        if(delivered) lastAutoDeliveries.push(delivered);
+        await fbDb.collection('users').doc(sellerUid).update({
+          totalSales: firebase.firestore.FieldValue.increment(c.qty)
+        }).catch(()=>{}); // kullanıcı dokümanında alan yoksa sorun değil, sales koleksiyonu asıl kaynaktır
       }
-    }
-    const status = (items.length && items.every(c=>c.l.deliveryMode==='otomatik') && lastAutoDeliveries.length===items.length) ? 'Teslim Edildi (Otomatik)' : 'Ödeme Alındı / Hazırlanıyor';
-    state.orders.unshift({id:lastOrderId, item: items.map(c=>c.l.title).join(', ').slice(0,60), price: total, date:'Bugün', status});
-    state.balanceHistory.unshift({id:Date.now(), type:'Satın Alma', amount:-total, date:'Bugün', status:'Tamamlandı'});
-    state.notifications.unshift({id:Date.now(), text:`Siparişin oluşturuldu: ${lastOrderId}`, time:'Şimdi', read:false});
-    state.cart = [];
-    toast(lastAutoDeliveries.length?'Ödeme başarılı! Hesap bilgilerin otomatik teslim edildi.':'Ödeme başarılı! Siparişin oluşturuldu.','success');
-    go('checkout',{done:true});
-  }catch(err){
-    toast('Ödeme tamamlanamadı: '+(err.message||authErrorMessage(err)),'error');
-    if(btn){ btn.disabled=false; btn.textContent=ic('lock',14)+' Bakiye ile Öde'; }
+    }catch(err){ console.error('Satış kaydı yazılamadı:', err); }
   }
+}
+/* Satıcının kendi "Sattıklarım" listesini ve toplam satış sayısını, manuel olarak
+   değiştirilemeyen gerçek satış kayıtlarından (sales koleksiyonu) otomatik yükler. */
+async function loadMySalesFromFirestore(){
+  if(!FIREBASE_ENABLED || !fbDb || !state.uid) return;
+  try{
+    const snap = await fbDb.collection('sales').where('sellerUid','==', state.uid).get();
+    const rows = snap.docs.map(d=>{
+      const s = d.data();
+      return { item: s.listingTitle||'İlan', date: (s.createdAt && s.createdAt.toMillis) ? timeAgo(s.createdAt.toMillis()) : 'Bugün', buyer: s.buyerName||'Alıcı', status:'Tamamlandı', price: s.price||0 };
+    });
+    rows.sort((a,b)=> (b.price - a.price)); // en güncel Firestore sırasında zaten gelir; ek bir sıralama gerekmez
+    state.mySales = rows;
+    render();
+  }catch(err){ console.error('Satış geçmişi yüklenemedi:', err); }
 }
 
 /* ---------------- HESAP PASS ---------------- */
@@ -3305,7 +3355,7 @@ async function confirmPhoneCode(){
     const isNewUser = !snap.exists;
     if(isNewUser){
       await fbDb.collection('users').doc(user.uid).set({
-        name: name || user.phoneNumber, phone: user.phoneNumber, role: 'user', balance: 0, verified: false, hasPass: false, passExpiry: null, shopName: '',
+        name: name || user.phoneNumber, phone: user.phoneNumber, role: 'user', balance: 0, verified: false, hasPass: false, passExpiry: null, shopName: '', photoURL: '',
         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       });
     }
@@ -3445,55 +3495,6 @@ async function confirmTopup(){
   render();
 }
 
-/* ---------------- OTOMATİK TESLİMAT: HESAP BİLGİLERİ YÖNETİMİ ----------------
-   Satıcı, Otomatik Teslimat seçili bir ilanı için hesap bilgilerini (Gmail/Şifre) buradan
-   girer ya da günceller. Bu bilgiler yalnızca ilgili ilanı satın alan müşteriye,
-   ödeme başarıyla tamamlandıktan sonra gösterilir (bkz. completeOrder). ------------- */
-function openDeliveryCredsModal(listingId){
-  const l = findListing(listingId);
-  if(!l) return;
-  const render_ = (email, password) => {
-    document.getElementById('modalRoot').innerHTML = `
-    <div class="overlay" onclick="if(event.target===this) closeModal()">
-      <div class="modal">
-        <div class="modal-head"><h3>${ic('lock',16)} Teslimat Bilgileri</h3><button class="icon-btn" onclick="closeModal()">✕</button></div>
-        <p class="small text-mid">Bu bilgiler yalnızca "${esc(l.title)}" ilanını satın alan müşteriye, ödeme tamamlandıktan sonra gösterilir ve Mesajlar bölümüne otomatik iletilir.</p>
-        <div class="field"><label>Gmail</label><input id="dc_email" type="email" autocomplete="off" placeholder="ornek@gmail.com" value="${esc(email||'')}"></div>
-        <div class="field"><label>Şifre</label><input id="dc_password" type="text" autocomplete="off" placeholder="Hesap şifresi" value="${esc(password||'')}"></div>
-        <button class="btn btn-primary btn-block" onclick="saveDeliveryCreds('${listingId}')">Kaydet</button>
-      </div>
-    </div>`;
-  };
-  if(FIREBASE_ENABLED){
-    // Bilgiler ana ilan dokümanında değil, ayrı bir alt koleksiyonda tutulur; düzenlemeden
-    // önce (yalnızca ilan sahibi okuyabildiği için) buradan tek tek çekilir.
-    fbDb.collection('listings').doc(listingId).collection('private').doc('delivery').get()
-      .then(snap=>{ const data = snap.exists ? snap.data() : {}; render_(data.email, data.password); })
-      .catch(err=>{ toast('Teslimat bilgileri okunamadı: '+authErrorMessage(err),'error'); render_(l.autoDelivery&&l.autoDelivery.email, l.autoDelivery&&l.autoDelivery.password); });
-  }else{
-    render_(l.autoDelivery&&l.autoDelivery.email, l.autoDelivery&&l.autoDelivery.password);
-  }
-}
-async function saveDeliveryCreds(listingId){
-  const l = findListing(listingId);
-  if(!l) return;
-  const email = (document.getElementById('dc_email')||{}).value?.trim();
-  const password = (document.getElementById('dc_password')||{}).value;
-  if(!email || !password){ toast('Lütfen Gmail ve şifreyi gir','error'); return; }
-  if(FIREBASE_ENABLED){
-    try{
-      await fbDb.collection('listings').doc(listingId).collection('private').doc('delivery')
-        .set({ email, password, sellerUid: state.uid||null, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
-      await fbDb.collection('listings').doc(listingId).update({ hasAutoDelivery: true });
-    }catch(err){ toast('Kaydedilemedi: '+authErrorMessage(err),'error'); return; }
-  }
-  l.hasAutoDelivery = true;
-  l.autoDelivery = { email, password };
-  closeModal();
-  toast('Teslimat bilgileri kaydedildi','success');
-  render();
-}
-
 /* ---------------- MESAJLAR ---------------- */
 function viewMessages(){
   if(!state.conversations.length){
@@ -3571,6 +3572,7 @@ async function saveProfileChanges(){
   const phone = (document.getElementById('profilePhoneInput')||{}).value?.trim();
   const shopName = (document.getElementById('profileShopNameInput')||{}).value?.trim();
   if(!name){ toast('Ad soyad boş olamaz','error'); return; }
+  const prevDisplayName = displayName();
   if(FIREBASE_ENABLED && state.uid){
     try{
       await fbDb.collection('users').doc(state.uid).update({ name: name, phone: phone||'', shopName: shopName||'' });
@@ -3579,6 +3581,12 @@ async function saveProfileChanges(){
   state.userName = name;
   state.userPhone = phone||'';
   state.shopName = shopName||'';
+  const newDisplayName = displayName();
+  // Mağaza adı (görünen isim) değiştiyse, YENİ bir mağaza kaydı oluşturmadan mevcut
+  // tüm ilanlardaki satıcı adını günceller — mağaza kimliği (uid) hep aynı kalır.
+  if(newDisplayName !== prevDisplayName){
+    await syncSellerInfoAcrossListings({ name: newDisplayName });
+  }
   toast('Profil güncellendi','success');
   render();
 }
@@ -3586,8 +3594,16 @@ function accountTabContent(tab){
   if(tab==='profil'){
     return `
     <div class="profile-head">
-      <div class="avatar">${esc(initials(displayName()))}</div>
+      ${avatarHtml(state.photoURL, displayName())}
       <div><b style="font-size:16px;">${esc(displayName())}</b> ${isPassActive()?'<span class="priority-badge">👑 Öncelikli Üye</span>':''}<div class="small text-mid">${state.isAdmin?'Yönetici':'Üye'}</div></div>
+    </div>
+    <div class="photo-picker">
+      ${avatarHtml(state.photoURL, displayName())}
+      <div>
+        <input type="file" id="profilePhotoInput" accept="image/*" style="display:none" onchange="handleProfilePhotoSelect(this)">
+        <button id="profilePhotoBtn" type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('profilePhotoInput').click()">📷 Fotoğraf Seç</button>
+        <div class="small text-mid" style="margin-top:6px;">Cihazının galerisinden bir fotoğraf seç. Profilinde ve mağazandaki tüm ilanlarında otomatik gösterilir.</div>
+      </div>
     </div>
     <div class="stat-cards">
       <div class="stat-card"><b class="mono">${state.orders.length}</b><span>Toplam Sipariş</span></div>
@@ -3605,7 +3621,7 @@ function accountTabContent(tab){
       </div>
       <button class="btn ${state.hasPass && (!state.passExpiry||state.passExpiry>Date.now())?'btn-outline':'btn-success'} btn-sm" onclick="openPassModal()">${(state.hasPass && (!state.passExpiry||state.passExpiry>Date.now()))?'Detaylar':'Hesap Pass Al'}</button>
     </div>
-    <div class="field"><label>Dükkan Adı</label><input id="profileShopNameInput" value="${esc(state.shopName||'')}" placeholder="Örn: Efsane Oyun Market" maxlength="40"></div>
+    <div class="field"><label>Dükkan Adı</label><input id="profileShopNameInput" value="${esc(state.shopName||'')}" placeholder="Örn: Efsane Oyun Market" maxlength="40"><div class="small text-mid" style="margin-top:4px;">Dükkan adını değiştirmek yeni bir mağaza oluşturmaz — mevcut ilanların, puanların ve satış geçmişinin tamamı korunur.</div></div>
     <div class="field"><label>Ad Soyad</label><input id="profileNameInput" value="${esc(state.userName||'')}"></div>
     <div class="field-row">
       <div class="field"><label>E-posta</label><input value="${esc(state.userEmail||'')}" disabled></div>
@@ -3640,7 +3656,6 @@ function accountTabContent(tab){
         <span class="pill pill-success">Yayında</span>
         <div class="row-actions">
           <button class="btn ${featured?'btn-outline':'btn-ghost'} btn-sm" style="${featured?'':'color:var(--orange);'}" title="${isPassActive()?'':'Hesap Pass gerekli'}" onclick="userToggleFeatured('${l.id}')">${ic('crown',13)} ${featured?'Kaldır':'Öne Çıkar'}</button>
-          ${l.deliveryMode==='otomatik'?`<button class="btn btn-outline btn-sm" onclick="openDeliveryCredsModal('${l.id}')">${ic('lock',13)} Teslimat Bilgileri${l.hasAutoDelivery?' ✓':''}</button>`:''}
           <button class="btn btn-outline btn-sm" onclick="go('listing',{id:'${l.id}'})">Görüntüle</button>
           <button class="btn btn-ghost btn-sm" style="color:var(--danger);" onclick="removeMyListing('${l.id}')">Kaldır</button>
         </div>
@@ -4371,6 +4386,8 @@ function currentViewHtml(){
     case 'checkout': return viewCheckout();
     case 'messages': return viewMessages();
     case 'account': return viewAccount();
+    case 'stores': return viewStores();
+    case 'shop': return viewShop();
     case 'support': return viewSupport();
     case 'admin': return state.isAdmin ? viewAdmin() : viewHome();
     default: return viewHome();
