@@ -1530,16 +1530,12 @@ function timeAgo(ts){
 function findListing(id){ return LISTINGS.find(l=>l.id===id); }function esc(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function initials(name){ return (name||'?').trim().split(/\s+/).map(p=>p[0]).slice(0,2).join('').toUpperCase()||'?'; }
 function displayName(){
+  // GÜVENLİK/GİZLİLİK: Bu fonksiyon platformda HERHANGİ bir yerde (mağaza ara,
+  // ilan kartları, üst menü, hesap paneli vb.) görünen isimdir. Kullanıcının gerçek
+  // ad-soyadı ASLA burada döndürülmez — yalnızca dükkan/mağaza adı gösterilir.
   const shop = (state.shopName||'').trim();
   if(shop) return shop;
-  const n = (state.userName||'').trim();
-  if(n && !n.includes('@')) return n;
-  const email = (state.userEmail||'').trim();
-  if(email.includes('@')){
-    const prefix = email.split('@')[0].replace(/[._-]+/g,' ').trim();
-    return prefix ? prefix.split(/\s+/).map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ') : 'Kullanıcı';
-  }
-  return n || 'Kullanıcı';
+  return 'Mağaza';
 }
 
 /* ---------------- TEKİL KULLANICI / MAĞAZA KİMLİĞİ YARDIMCILARI ----------------
@@ -3572,6 +3568,7 @@ async function saveProfileChanges(){
   const phone = (document.getElementById('profilePhoneInput')||{}).value?.trim();
   const shopName = (document.getElementById('profileShopNameInput')||{}).value?.trim();
   if(!name){ toast('Ad soyad boş olamaz','error'); return; }
+  if(!shopName){ toast('Dükkan/mağaza adı boş olamaz — platformda ad soyadın yerine daima mağaza adın gösterilir.','error'); return; }
   const prevDisplayName = displayName();
   if(FIREBASE_ENABLED && state.uid){
     try{
